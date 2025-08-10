@@ -1,29 +1,27 @@
 import { Plugin } from "obsidian";
 
 export interface WhisperSettings {
-	apiKey: string;
-	apiUrl: string;
-	model: string;
-	prompt: string;
+	whisperPath: string;
+	modelSize: string;
 	language: string;
 	saveAudioFile: boolean;
 	saveAudioFilePath: string;
 	debugMode: boolean;
 	createNewFileAfterRecording: boolean;
 	createNewFileAfterRecordingPath: string;
+	additionalWhisperArgs: string[];
 }
 
 export const DEFAULT_SETTINGS: WhisperSettings = {
-	apiKey: "",
-	apiUrl: "https://api.openai.com/v1/audio/transcriptions",
-	model: "whisper-1",
-	prompt: "",
-	language: "en",
+	whisperPath: "whisper",
+	modelSize: "base",
+	language: "auto",
 	saveAudioFile: true,
 	saveAudioFilePath: "",
 	debugMode: false,
 	createNewFileAfterRecording: true,
 	createNewFileAfterRecordingPath: "",
+	additionalWhisperArgs: [],
 };
 
 export class SettingsManager {

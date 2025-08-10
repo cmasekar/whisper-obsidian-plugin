@@ -1,13 +1,27 @@
-import axios from "axios";
 import Whisper from "main";
 import { Notice, MarkdownView } from "obsidian";
 import { getBaseFileName } from "./utils";
+import { LocalWhisperProcessor, LocalWhisperConfig } from "./LocalWhisperProcessor";
 
 export class AudioHandler {
 	private plugin: Whisper;
+	private localProcessor: LocalWhisperProcessor | null = null;
 
 	constructor(plugin: Whisper) {
 		this.plugin = plugin;
+		this.initializeLocalProcessor();
+	}
+
+	private initializeLocalProcessor(): void {
+		const config: LocalWhisperConfig = {
+			whisperPath: this.plugin.settings.whisperPath || 'whisper',
+			modelSize: this.plugin.settings.modelSize || 'base',
+			language: this.plugin.settings.language || 'auto',
+			outputFormat: 'txt',
+			additionalArgs: this.plugin.settings.additionalWhisperArgs
+		};
+		
+		this.localProcessor = new LocalWhisperProcessor(config);
 	}
 
 	async sendAudioData(blob: Blob, fileName: string): Promise<void> {
@@ -27,22 +41,22 @@ export class AudioHandler {
 		}${baseFileName}.md`;
 
 		if (this.plugin.settings.debugMode) {
-			new Notice(`Sending audio data size: ${blob.size / 1000} KB`);
+			new Notice(`Processing audio data size: ${blob.size / 1000} KB`);
 		}
 
-		if (!this.plugin.settings.apiKey) {
-			new Notice(
-				"API key is missing. Please add your API key in the settings."
-			);
+		if (!this.localProcessor) {
+			new Notice("Local Whisper processor not initialized.");
 			return;
 		}
 
-		const formData = new FormData();
-		formData.append("file", blob, fileName);
-		formData.append("model", this.plugin.settings.model);
-		formData.append("language", this.plugin.settings.language);
-		if (this.plugin.settings.prompt)
-			formData.append("prompt", this.plugin.settings.prompt);
+		// Check if Whisper is installed
+		const isInstalled = await this.localProcessor.checkWhisperInstallation();
+		if (!isInstalled) {
+			new Notice(
+				"Whisper is not installed or not found. Please check your Whisper installation and path in settings."
+			);
+			return;
+		}
 
 		try {
 			// If the saveAudioFile setting is true, save the audio file
@@ -61,18 +75,10 @@ export class AudioHandler {
 
 		try {
 			if (this.plugin.settings.debugMode) {
-				new Notice("Parsing audio data:" + fileName);
+				new Notice("Processing audio data locally: " + fileName);
 			}
-			const response = await axios.post(
-				this.plugin.settings.apiUrl,
-				formData,
-				{
-					headers: {
-						"Content-Type": "multipart/form-data",
-						Authorization: `Bearer ${this.plugin.settings.apiKey}`,
-					},
-				}
-			);
+			
+			const transcriptionText = await this.localProcessor.processAudio(blob, fileName);
 
 			// Determine if a new file should be created
 			const activeView =
@@ -81,10 +87,11 @@ export class AudioHandler {
 				this.plugin.settings.createNewFileAfterRecording || !activeView;
 
 			if (shouldCreateNewFile) {
-				await this.plugin.app.vault.create(
-					noteFilePath,
-					`![[${audioFilePath}]]\n${response.data.text}`
-				);
+				const content = this.plugin.settings.saveAudioFile 
+					? `![[${audioFilePath}]]\n${transcriptionText}`
+					: transcriptionText;
+				
+				await this.plugin.app.vault.create(noteFilePath, content);
 				await this.plugin.app.workspace.openLinkText(
 					noteFilePath,
 					"",
@@ -98,21 +105,25 @@ export class AudioHandler {
 					)?.editor;
 				if (editor) {
 					const cursorPosition = editor.getCursor();
-					editor.replaceRange(response.data.text, cursorPosition);
+					editor.replaceRange(transcriptionText, cursorPosition);
 
 					// Move the cursor to the end of the inserted text
 					const newPosition = {
 						line: cursorPosition.line,
-						ch: cursorPosition.ch + response.data.text.length,
+						ch: cursorPosition.ch + transcriptionText.length,
 					};
 					editor.setCursor(newPosition);
 				}
 			}
 
-			new Notice("Audio parsed successfully.");
+			new Notice("Audio transcribed successfully!");
 		} catch (err) {
-			console.error("Error parsing audio:", err);
-			new Notice("Error parsing audio: " + err.message);
+			console.error("Error transcribing audio:", err);
+			new Notice("Error transcribing audio: " + err.message);
 		}
+	}
+
+	updateLocalProcessor(): void {
+		this.initializeLocalProcessor();
 	}
 }

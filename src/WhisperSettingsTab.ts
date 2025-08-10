@@ -19,11 +19,10 @@ export class WhisperSettingsTab extends PluginSettingTab {
 
 		containerEl.empty();
 		this.createHeader();
-		this.createApiKeySetting();
-		this.createApiUrlSetting();
-		this.createModelSetting();
-		this.createPromptSetting();
+		this.createWhisperPathSetting();
+		this.createModelSizeSetting();
 		this.createLanguageSetting();
+		this.createAdditionalArgsSetting();
 		this.createSaveAudioFileToggleSetting();
 		this.createSaveAudioFilePathSetting();
 		this.createNewFileToggleSetting();
@@ -46,7 +45,10 @@ export class WhisperSettingsTab extends PluginSettingTab {
 	}
 
 	private createHeader(): void {
-		this.containerEl.createEl("h2", { text: "Settings for Whisper." });
+		this.containerEl.createEl("h2", { text: "Local Whisper Settings" });
+		this.containerEl.createEl("p", { 
+			text: "Configure local OpenAI Whisper installation for offline speech-to-text transcription." 
+		});
 	}
 
 	private createTextSetting(
@@ -67,76 +69,88 @@ export class WhisperSettingsTab extends PluginSettingTab {
 			);
 	}
 
-	private createApiKeySetting(): void {
+	private createWhisperPathSetting(): void {
 		this.createTextSetting(
-			"API Key",
-			"Enter your OpenAI API key",
-			"sk-...xxxx",
-			this.plugin.settings.apiKey,
+			"Whisper Executable Path",
+			"Path to the Whisper executable (e.g., 'whisper' if installed globally, or full path like '/usr/local/bin/whisper')",
+			"whisper",
+			this.plugin.settings.whisperPath,
 			async (value) => {
-				this.plugin.settings.apiKey = value;
+				this.plugin.settings.whisperPath = value;
 				await this.settingsManager.saveSettings(this.plugin.settings);
+				this.plugin.audioHandler.updateLocalProcessor();
 			}
 		);
 	}
 
-	private createApiUrlSetting(): void {
-		this.createTextSetting(
-			"API URL",
-			"Specify the endpoint that will be used to make requests to",
-			"https://api.your-custom-url.com",
-			this.plugin.settings.apiUrl,
-			async (value) => {
-				this.plugin.settings.apiUrl = value;
-				await this.settingsManager.saveSettings(this.plugin.settings);
-			}
-		);
+	private createModelSizeSetting(): void {
+		new Setting(this.containerEl)
+			.setName("Model Size")
+			.setDesc("Choose the Whisper model size. Larger models are more accurate but slower.")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("tiny", "tiny (39 MB)")
+					.addOption("base", "base (74 MB)")
+					.addOption("small", "small (244 MB)")
+					.addOption("medium", "medium (769 MB)")
+					.addOption("large", "large (1550 MB)")
+					.setValue(this.plugin.settings.modelSize)
+					.onChange(async (value) => {
+						this.plugin.settings.modelSize = value;
+						await this.settingsManager.saveSettings(this.plugin.settings);
+						this.plugin.audioHandler.updateLocalProcessor();
+					})
+			);
 	}
 
-	private createModelSetting(): void {
+	private createAdditionalArgsSetting(): void {
 		this.createTextSetting(
-			"Model",
-			"Specify the machine learning model to use for generating text",
-			"whisper-1",
-			this.plugin.settings.model,
+			"Additional Arguments",
+			"Optional additional command-line arguments for Whisper (comma-separated)",
+			"--fp16=False, --device=cpu",
+			this.plugin.settings.additionalWhisperArgs.join(", "),
 			async (value) => {
-				this.plugin.settings.model = value;
+				this.plugin.settings.additionalWhisperArgs = value
+					.split(",")
+					.map(arg => arg.trim())
+					.filter(arg => arg.length > 0);
 				await this.settingsManager.saveSettings(this.plugin.settings);
-			}
-		);
-	}
-
-	private createPromptSetting(): void {
-		this.createTextSetting(
-			"Prompt",
-			"Optional: Add words with their correct spellings to help with transcription. Make sure it matches the chosen language.",
-			"Example: ZyntriQix, Digique Plus, CynapseFive",
-			this.plugin.settings.prompt,
-			async (value) => {
-				this.plugin.settings.prompt = value;
-				await this.settingsManager.saveSettings(this.plugin.settings);
+				this.plugin.audioHandler.updateLocalProcessor();
 			}
 		);
 	}
 
 	private createLanguageSetting(): void {
-		this.createTextSetting(
-			"Language",
-			"Specify the language of the message being whispered",
-			"en",
-			this.plugin.settings.language,
-			async (value) => {
-				this.plugin.settings.language = value;
-				await this.settingsManager.saveSettings(this.plugin.settings);
-			}
-		);
+		new Setting(this.containerEl)
+			.setName("Language")
+			.setDesc("Specify the language for transcription. Use 'auto' for automatic detection.")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("auto", "Auto-detect")
+					.addOption("en", "English")
+					.addOption("es", "Spanish")
+					.addOption("fr", "French")
+					.addOption("de", "German")
+					.addOption("it", "Italian")
+					.addOption("ja", "Japanese")
+					.addOption("ko", "Korean")
+					.addOption("pt", "Portuguese")
+					.addOption("ru", "Russian")
+					.addOption("zh", "Chinese")
+					.setValue(this.plugin.settings.language)
+					.onChange(async (value) => {
+						this.plugin.settings.language = value;
+						await this.settingsManager.saveSettings(this.plugin.settings);
+						this.plugin.audioHandler.updateLocalProcessor();
+					})
+			);
 	}
 
 	private createSaveAudioFileToggleSetting(): void {
 		new Setting(this.containerEl)
 			.setName("Save recording")
 			.setDesc(
-				"Turn on to save the audio file after sending it to the Whisper API"
+				"Turn on to save the audio file after transcription"
 			)
 			.addToggle((toggle) =>
 				toggle
