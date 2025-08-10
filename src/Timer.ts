@@ -1,5 +1,5 @@
 export class Timer {
-	private elapsedTime: number = 0;
+	private elapsedTime = 0;
 	private intervalId: number | null = null;
 	private onUpdate: (() => void) | null = null;
 
